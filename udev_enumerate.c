@@ -32,6 +32,7 @@ struct udev_enumerate {
     struct udev_list_entry property_match;
     struct udev_list_entry sysattr_match;
     struct udev_list_entry sysname_match;
+    struct udev_list_entry parent_match;
     struct udev_list_entry devices;
     struct udev *udev;
     int refcount;
@@ -74,7 +75,7 @@ int udev_enumerate_add_match_sysname(struct udev_enumerate *udev_enumerate, cons
 
 /* XXX NOT IMPLEMENTED */ int udev_enumerate_add_match_parent(struct udev_enumerate *udev_enumerate, struct udev_device *parent)
 {
-    return 0;
+    return udev_enumerate ? !!udev_list_entry_add(&udev_enumerate->parent_match, udev_device_get_sysname(parent), NULL, 0) - 1: -1;
 }
 
 /* XXX NOT IMPLEMENTED */ int udev_enumerate_add_match_is_initialized(struct udev_enumerate *udev_enumerate)
@@ -223,6 +224,29 @@ static int filter_sysattr(struct udev_enumerate *udev_enumerate, struct udev_dev
     return 1;
 }
 
+static int filter_parent(struct udev_enumerate *udev_enumerate, struct udev_device *udev_device)
+{
+    struct udev_list_entry *list_entry;
+    const char *sysname;
+
+    sysname = udev_device_get_sysname(udev_device_get_parent(udev_device));
+    list_entry = udev_list_entry_get_next(&udev_enumerate->parent_match);
+
+    if (!list_entry) {
+        return 1;
+    }
+
+    while (list_entry) {
+        if (fnmatch(udev_list_entry_get_name(list_entry), sysname, 0) == 0) {
+            return 1;
+        }
+
+        list_entry = udev_list_entry_get_next(list_entry);
+    }
+
+    return 0;
+}
+
 static void add_device(struct udev_enumerate *udev_enumerate, const char *path)
 {
     struct udev_device *udev_device;
@@ -236,7 +260,8 @@ static void add_device(struct udev_enumerate *udev_enumerate, const char *path)
     if (!filter_subsystem(udev_enumerate, udev_device) ||
         !filter_sysname(udev_enumerate, udev_device) ||
         !filter_property(udev_enumerate, udev_device) ||
-        !filter_sysattr(udev_enumerate, udev_device)) {
+        !filter_sysattr(udev_enumerate, udev_device) ||
+        !filter_parent(udev_enumerate, udev_device)) {
         udev_device_unref(udev_device);
         return;
     }
